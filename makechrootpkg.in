@@ -206,6 +206,7 @@ EOF
 	{
 		printf '#!/bin/bash\n'
 		declare -f _chrootbuild
+		declare -p SOURCE_DATE_EPOCH 2>/dev/null
 		printf '_chrootbuild "$@" || exit\n'
 
 		if $run_namcap; then
@@ -219,20 +220,20 @@ EOF
 # These functions aren't run in makechrootpkg,
 # so no global variables
 _chrootbuild() {
-	# Work around nspawn not giving us a ctty
-	exec </dev/console
-
 	# No coredumps
 	ulimit -c 0
 
 	# shellcheck source=/dev/null
 	. /etc/profile
 
+	# otherwise we might have missing keys
+	pacman-key --populate
+
 	# Beware, there are some stupid arbitrary rules on how you can
 	# use "$" in arguments to commands with "sudo -i".  ${foo} or
 	# ${1} is OK, but $foo or $1 isn't.
 	# https://bugzilla.sudo.ws/show_bug.cgi?id=765
-	sudo -iu builduser bash -c 'cd /startdir; makepkg "$@"' -bash "$@"
+	sudo --preserve-env=SOURCE_DATE_EPOCH -iu builduser bash -c 'cd /startdir; makepkg "$@"' -bash "$@"
 }
 
 _chrootnamcap() {
@@ -343,7 +344,7 @@ main() {
 	[[ -n $makepkg_user && -z $(id -u "$makepkg_user") ]] && die 'Invalid makepkg user.'
 	makepkg_user=${makepkg_user:-${SUDO_USER:-$USER}}
 
-	check_root
+	check_root SOURCE_DATE_EPOCH
 
 	# Canonicalize chrootdir, getting rid of trailing /
 	chrootdir=$(readlink -e "$passeddir")
