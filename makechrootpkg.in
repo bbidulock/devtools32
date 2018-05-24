@@ -69,7 +69,7 @@ load_vars() {
 	[[ -f $makepkg_conf ]] || return 1
 
 	for var in {SRC,SRCPKG,PKG,LOG}DEST MAKEFLAGS PACKAGER; do
-		[[ -z ${!var:-} ]] && eval "$(grep "^${var}=" "$makepkg_conf")"
+		[[ -z ${!var:-} ]] && eval "$(grep -a "^${var}=" "$makepkg_conf")"
 	done
 
 	return 0
@@ -165,7 +165,7 @@ prepare_chroot() {
 	local keepbuilddir=$3
 	local run_namcap=$4
 
-	$keepbuilddir || rm -rf "$copydir/build"
+	[[ $keepbuilddir = true ]] || rm -rf "$copydir/build"
 
 	local builduser_uid builduser_gid
 	builduser_uid="${SUDO_UID:-$UID}"
@@ -176,9 +176,10 @@ prepare_chroot() {
 	# We can't use useradd without chrooting, otherwise it invokes PAM modules
 	# which we might not be able to load (i.e. when building i686 packages on
 	# an x86_64 host).
-	sed -e '/^builduser:/d' -i "$copydir"/etc/{passwd,group}
+	sed -e '/^builduser:/d' -i "$copydir"/etc/{passwd,shadow,group}
 	printf >>"$copydir/etc/group"  'builduser:x:%d:\n' "$builduser_gid"
 	printf >>"$copydir/etc/passwd" 'builduser:x:%d:%d:builduser:/build:/bin/bash\n' "$builduser_uid" "$builduser_gid"
+	printf >>"$copydir/etc/shadow" 'builduser:!!:%d::::::\n' "$(( $(date -u +%s) / 86400 ))"
 
 	$install -d "$copydir"/{build,build/.gnupg,startdir,{pkg,srcpkg,src,log}dest}
 
@@ -206,10 +207,9 @@ EOF
 	{
 		printf '#!/bin/bash\n'
 		declare -f _chrootbuild
-		declare -p SOURCE_DATE_EPOCH 2>/dev/null
 		printf '_chrootbuild "$@" || exit\n'
 
-		if $run_namcap; then
+		if [[ $run_namcap = true ]]; then
 			declare -f _chrootnamcap
 			printf '_chrootnamcap || exit\n'
 		fi
@@ -233,7 +233,7 @@ _chrootbuild() {
 	# use "$" in arguments to commands with "sudo -i".  ${foo} or
 	# ${1} is OK, but $foo or $1 isn't.
 	# https://bugzilla.sudo.ws/show_bug.cgi?id=765
-	sudo --preserve-env=SOURCE_DATE_EPOCH -iu builduser bash -c 'cd /startdir; makepkg "$@"' -bash "$@"
+	sudo -iu builduser bash -c 'cd /startdir; makepkg "$@"' -bash "$@"
 }
 
 _chrootnamcap() {
@@ -255,10 +255,11 @@ download_sources() {
 	local makepkg_user=$2
 
 	setup_workdir
-	chown "$makepkg_user" "$WORKDIR"
+	chown "$makepkg_user:$makepkg_user" "$WORKDIR"
 
 	# Ensure sources are downloaded
-	sudo -u "$makepkg_user" env SRCDEST="$SRCDEST" BUILDDIR="$WORKDIR" \
+	sudo -u "$makepkg_user" --preserve-env=GNUPGHOME \
+		env SRCDEST="$SRCDEST" BUILDDIR="$WORKDIR" \
 		makepkg --config="$copydir/etc/makepkg.conf" --verifysource -o ||
 		die "Could not download sources."
 }
@@ -344,7 +345,7 @@ main() {
 	[[ -n $makepkg_user && -z $(id -u "$makepkg_user") ]] && die 'Invalid makepkg user.'
 	makepkg_user=${makepkg_user:-${SUDO_USER:-$USER}}
 
-	check_root SOURCE_DATE_EPOCH
+	check_root
 
 	# Canonicalize chrootdir, getting rid of trailing /
 	chrootdir=$(readlink -e "$passeddir")
@@ -412,7 +413,7 @@ main() {
 
 	download_sources "$copydir" "$makepkg_user"
 
-	prepare_chroot "$copydir" "$USER_HOME" "$keepbuilddir"
+	prepare_chroot "$copydir" "$USER_HOME" "$keepbuilddir" "$run_namcap"
 
 	if arch-nspawn "$copydir" \
 		--bind="$PWD:/startdir" \

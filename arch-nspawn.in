@@ -63,9 +63,9 @@ else
 fi
 
 if [[ -n $makepkg_conf ]]; then
-	eval "$(grep '^CARCH=' "$makepkg_conf")"
+	eval "$(grep -a '^CARCH=' "$makepkg_conf")"
 else
-	eval "$(grep '^CARCH=' "$working_dir/etc/makepkg.conf")"
+	eval "$(grep -a '^CARCH=' "$working_dir/etc/makepkg.conf")"
 fi
 
 if [[ "$CARCH" = 'i'*'86' ]]; then
@@ -116,7 +116,7 @@ copy_hostconf () {
 		cp -T "$file" "$working_dir$file"
 	done
 
-	sed -r "s|^#?\\s*CacheDir.+|CacheDir = $(echo -n "${cache_dirs[@]}")|g" -i "$working_dir/etc/pacman.conf"
+	sed -r "s|^#?\\s*CacheDir.+|CacheDir = ${cache_dirs[*]}|g" -i "$working_dir/etc/pacman.conf"
 	sed -i '/^Architecture = /s| auto$| '"$CARCH|" "$working_dir/etc/pacman.conf"
 }
 # }}}
