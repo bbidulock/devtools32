@@ -45,7 +45,15 @@ while getopts 'hcr:' arg; do
 	esac
 done
 
-check_root SOURCE_DATE_EPOCH
+check_root
+
+if [ "${arch}" = "x86_64" ]; then
+	cache_dir=''
+else
+	mkdir -p '/var/cache/archbuild32'
+	cache_dir='-c/var/cache/archbuild32'
+	makechrootpkg_args+=('-d/var/cache/archbuild32:/var/cache/pacman/pkg')
+fi
 
 if [ "${arch}" = "x86_64" ]; then
 	cache_dir=''
@@ -106,11 +114,6 @@ else
 		${cache_dir} \
 		"${chroots}/${repo}-${arch}/root" \
 		pacman --arch ${arch} -Syu --noconfirm || abort
-fi
-
-# Always build official packages reproducibly
-if [[ ! -v SOURCE_DATE_EPOCH ]]; then
-	export SOURCE_DATE_EPOCH=$(date +%s)
 fi
 
 msg "Building in chroot for [%s] (%s)..." "${repo}" "${arch}"
