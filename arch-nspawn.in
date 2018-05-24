@@ -116,7 +116,7 @@ copy_hostconf () {
 		cp -T "$file" "$working_dir$file"
 	done
 
-	sed -r "s|^#?\\s*CacheDir.+|CacheDir = $(echo -n "${cache_dirs[@]}")|g" -i "$working_dir/etc/pacman.conf"
+	sed -r "s|^#?\\s*CacheDir.+|CacheDir = ${cache_dirs[*]}|g" -i "$working_dir/etc/pacman.conf"
 	sed -i '/^Architecture = /s| auto$| '"$CARCH|" "$working_dir/etc/pacman.conf"
 }
 # }}}
@@ -132,6 +132,8 @@ fi
 
 build_mount_args
 copy_hostconf
+
+eval "$(grep -a '^CARCH=' "$working_dir/etc/makepkg.conf")"
 
 [[ -z $nosetarch ]] || unset CARCH
 
